@@ -1,0 +1,264 @@
+.model small
+.stack 100h
+.data
+	f1name db 100h dup(?)
+	buf1 db 100h dup(?)
+	f1size dw 0
+	f1nameLength dw 0
+	
+	f2name db 100h dup(?)
+	buf2 db 100h dup(?)
+	f2size dw 0
+	f2nameLength dw 0
+	
+	f3name db 100h dup(?)
+	buf3 db 100h dup(?)
+	f3size dw 0
+	
+	bufFinal db 100h dup(?)
+	finalSize dw 0
+	
+	temp dw 0
+	
+	msgIncorrectTitle db "File with this name doesn't exist: ",'$'
+	msgHelp db "Excecute program by enterin 2 input and 1 output file.",'$'
+.code
+start:
+	mov ax,@data
+	mov ds,ax
+	
+	call fileNames
+	
+	mov dx,offset f1name
+	mov ax,3D00h			; open file
+	int 21h
+	jc file1DoesntExistJump
+	
+	mov bx,ax
+	mov ah,3fh				; read file, bx = file handle, cx = number of bytes to read, ds:dx = buffer for data
+	mov cx,100h
+	mov dx,offset buf1
+	int 21h
+	
+	mov [f1size],ax
+	
+	mov dx,offset f2name
+	mov ax,3D00h			; open file
+	int 21h
+	jc file2DoesntExistJump
+	
+	mov bx,ax
+	mov ah,3fh				; read file, bx = file handle, cx = number of bytes to read, ds:dx = buffer for data
+	mov cx,100h
+	mov dx,offset buf2
+	int 21h
+	
+	mov [f2size],ax	
+	
+jmp next
+
+file1DoesntExistJump:
+jmp file1DoesntExist
+file1DoesntExistJump:
+jmp file1DoesntExist
+
+next:
+	
+	;sum decimal numbers
+	
+	mov si,[f1size]
+	mov di,[f2size]
+	mov al,0
+	cmp si,di
+	jg num1larger
+	jmp num2larger
+num1larger:
+	mov cx,di
+num2larger:
+	mov cx,si
+	
+decimalSum:
+	add al,buf2[di-1]
+	dec di
+	sub al,48
+	mov dl,buf1[si-1]
+	dec si
+	sub dl,48
+	add dl,al
+	add dl,48
+	cmp dl,"9"
+	jg additionalNumber
+	mov al,0
+saveToBuf:
+	mov [temp],si
+	mov si,[f3size]
+	mov buf3[si],dl
+	inc [f3size]
+	mov si,[temp]
+	cmp di,0
+	je finalCountings1
+	cmp si,0
+	je finalCountings2
+	jmp nextCycle
+finalCountings1:
+	cmp si,0
+	je endCycle
+	mov dl,buf1[si-1]
+	dec si
+	add dl,al
+	cmp dl,"9"
+	jg additionalNumber
+	mov al,0
+	jmp saveToBuf
+finalCountings2:
+	cmp di,0
+	je endCycle
+	mov dl,buf2[di-1]
+	dec di
+	add dl,al
+	cmp dl,"9"
+	jg skaiciusMintyje
+	mov al,0
+	jmp saveToBuf
+additionalNumber:
+	sub dl,10
+	mov al,1
+	jmp saveToBuf
+nextCycle:
+loop decimalSum
+
+endCycle:
+	cmp dl,30h
+	jne smallerNumber
+	cmp buf1[0],"0"
+	je smallerNumber
+	mov si,[f3size]
+	inc [f3size]
+	mov cx,[f3size]
+	mov buf3[si],31h
+	jmp flipArray
+smallerNumber:
+	mov cx,[f3size]
+	mov si,[f3size]
+	dec si
+flipArray:
+	mov dl,buf3[si]
+	mov [temp],si
+	mov si,[finalSize]
+	mov bufFinal[si],dl
+	inc [finalSize]
+	mov si,[temp]
+	dec si
+loop flipArray
+	
+	mov ax,3C00h			; create file
+	mov dx,offset f3name
+	mov cx,0				; cx = 0 - read only
+	int 21h
+	
+	mov bx,ax
+	mov ah,40h				; write to file or device
+	mov cx,[f3size]				
+	mov dx,offset bufFinal
+	int 21h
+	
+endCode:	
+	mov ah,4ch
+	int 21h
+
+file1DoesntExist:
+	call errorMsg
+	mov cx,[f1nameLength]
+	mov di,0
+name1Elements:
+	mov dl,f1name[di]
+	mov ah,02h
+	int 21h
+	inc di
+loop name1Elements
+	jmp pabaiga
+
+file2DoesntExist:
+	call errorMsg
+	mov cx,[f2nameLength]
+	mov di,0
+name2Elements:
+	mov dl,f2name[di]
+	mov ah,02h
+	int 21h
+	inc di
+loop name2Elements
+	jmp endCode
+	
+;-------------------------------------------------------------------------------
+	
+errorMsg proc
+	mov dx,offset msgIncorrectTitle
+	mov ah,09h
+	int 21h
+ret
+
+
+fileNames proc
+	mov si,82h				
+	mov di,0
+	
+f1Input:
+	mov dl, es:[si]
+	cmp dl,0
+	je neteisingasIvedimas
+	cmp dl,13
+	je neteisingasIvedimas
+	cmp dl,32
+	je f2InputStart
+	mov f1name[di],dl
+	inc di
+	inc si
+	jmp f1Input
+	
+f2InputStart:
+	mov [f1nameLength],di
+	inc si
+	mov di,0
+f2Input:
+	mov dl, es:[si]
+	cmp dl,0
+	je wrongInput
+	cmp dl,13
+	je wrongInput
+	cmp dl,32
+	je f3InputStart
+	mov f2name[di],dl
+	inc di
+	inc si
+	jmp f2Input
+	
+f3InputStart:
+	mov [f2nameLength],di
+	inc si
+	mov di,0
+f3Input:
+	mov dl, es:[si]
+	cmp dl,0
+	je wrongInput
+	cmp dl,32
+	je wrongInput
+	cmp dl,13
+	je codeReturn
+	mov f3name[di],dl
+	inc di
+	inc si
+	jmp f3Input
+
+wrongInput:
+	mov dx,offset msgHelp
+	mov ah,09h
+	int 21h
+	
+	mov ah,4ch
+	int 21h
+	
+codeReturn:
+ret
+
+end start
